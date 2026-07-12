@@ -99,8 +99,29 @@ EXIT 1</code></pre>
       </div>
     </section>
 
+    <section class="fix" id="fix">
+      <div class="section-label">04 / SOURCE-LEVEL FIX</div>
+      <h2>The public repository confirms the failure path.</h2>
+      <p>In <code>merge_gateway/api/routes/sdk_compat_openai.py</code>, streaming usage starts as <code>None</code> and is populated only when the native final chunk includes usage. The compatibility layer then emits <code>final_usage or {}</code>. That empty object is precisely what Codex cannot deserialize.</p>
+      <div class="code-tabs">
+        <div><h3>Current behavior</h3><pre><code>final_usage: dict[str, int] | None = None
+...
+"usage": final_usage or {},</code></pre></div>
+        <div><h3>Proposed behavior</h3><pre><code>final_usage = {
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "total_tokens": 0,
+}
+...
+"usage": final_usage,</code></pre></div>
+      </div>
+      <p>The included regression test simulates a provider whose final native stream chunk omits usage and asserts that <code>response.completed</code> still contains all three required integer counters.</p>
+      <a class="patch-link" href="merge-gateway-codex-usage-fix.patch" download>Download the proposed patch →</a>
+      <p class="note">Patch prepared against the public <code>develop</code> branch at commit <code>fdced40</code>. Python syntax compilation and <code>git diff --check</code> passed. The repository’s pytest suite was not executed on this host because pytest and project dependencies are not installed.</p>
+    </section>
+
     <section>
-      <div class="section-label">04 / WHAT WORKED ELSEWHERE</div>
+      <div class="section-label">05 / WHAT WORKED ELSEWHERE</div>
       <h2>Merge works through other paths</h2>
       <div class="three">
         <article><b>Native SDK</b><p>Merge’s Python and TypeScript SDKs use its native Responses format and are the strongest route for custom agents.</p></article>
@@ -110,7 +131,7 @@ EXIT 1</code></pre>
     </section>
 
     <section id="repro">
-      <div class="section-label">05 / REPRODUCTION</div>
+      <div class="section-label">06 / REPRODUCTION</div>
       <h2>Minimal provider configuration</h2>
       <div class="code-tabs">
         <div><h3>OpenRouter</h3><pre><code>[model_providers.openrouter]
@@ -129,7 +150,7 @@ wire_api = "responses"</code></pre></div>
     </section>
 
     <section class="takeaway">
-      <div class="section-label">06 / RECOMMENDATION</div>
+      <div class="section-label">07 / RECOMMENDATION</div>
       <h2>Build a client-level compatibility suite.</h2>
       <p>Test current and previous Codex versions against plain responses, streaming, developer messages, tool calls, reasoning controls, session continuation, and complete usage accounting. A gateway should only claim Codex compatibility after a real Codex process exits successfully.</p>
     </section>
