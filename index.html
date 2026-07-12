@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Gateway Compatibility: A Field Test</title>
+  <meta name="description" content="A reproducible field test of Codex CLI 0.144.1 with OpenRouter and Merge Gateway using GPT-5.6 Sol." />
+  <meta property="og:title" content="Codex Gateway Compatibility: A Field Test" />
+  <meta property="og:description" content="Same client. Same model. Two gateways. One completed the full Codex workflow." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://matthewferoz.github.io/codex-gateway-compatibility/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Codex Gateway Compatibility: A Field Test" />
+  <meta name="twitter:description" content="Same client. Same model. Two gateways. One completed the full Codex workflow." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav><a class="brand" href="#">FIELD NOTE / 01</a><a href="#method">Method</a><a href="#results">Results</a><a href="#repro">Reproduce</a></nav>
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">CODING AGENT INFRASTRUCTURE · JULY 2026</p>
+        <h1>How compatible is “OpenAI-compatible”?</h1>
+        <p class="dek">We ran the same Codex CLI, model, prompt, and environment through two model gateways. Connectivity was easy. Protocol fidelity decided the outcome.</p>
+      </div>
+      <div class="scorecard" aria-label="Result summary">
+        <div><span>OpenRouter</span><strong class="pass">PASS</strong></div>
+        <div><span>Merge Gateway</span><strong class="fail">BLOCKED</strong></div>
+        <small>Codex CLI 0.144.1 · GPT-5.6 Sol · real generation test</small>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="lede">
+      <p class="big">A gateway can accept authentication, resolve a model, and pass a health check—yet still fail as a coding-agent backend.</p>
+      <p>Agent clients exercise more of an API than a basic chat request: developer messages, tools, reasoning controls, streaming event order, usage accounting, and strict response schemas. We tested the whole path rather than stopping at “endpoint reachable.”</p>
+    </section>
+
+    <section id="method">
+      <div class="section-label">01 / METHOD</div>
+      <h2>Controlled test setup</h2>
+      <div class="spec-grid">
+        <article><span>Client</span><strong>OpenAI Codex CLI</strong><code>0.144.1</code></article>
+        <article><span>Model</span><strong>GPT-5.6 Sol</strong><code>openai/gpt-5.6-sol</code></article>
+        <article><span>Wire API</span><strong>Responses</strong><code>wire_api = "responses"</code></article>
+        <article><span>Prompt</span><strong>Exact-match smoke test</strong><code>Reply with exactly: …_OK</code></article>
+      </div>
+      <div class="flow">
+        <div>T3 Code</div><b>→</b><div>Codex CLI</div><b>→</b><div>Gateway</div><b>→</b><div>GPT-5.6 Sol</div>
+      </div>
+      <p class="note">Each provider used an isolated <code>CODEX_HOME</code>, an environment-provided API key, and the same model and reasoning level. No API keys or credentials are included in this report.</p>
+    </section>
+
+    <section id="results">
+      <div class="section-label">02 / RESULTS</div>
+      <h2>Connection parity. Execution divergence.</h2>
+      <div class="comparison">
+        <article class="result-card success">
+          <div class="result-head"><h3>OpenRouter</h3><span>Completed</span></div>
+          <ul>
+            <li>Configuration loaded</li><li>Authentication accepted</li><li>Endpoint reachable</li><li>Model selected correctly</li><li>Stream parsed successfully</li><li>Exact expected output returned</li>
+          </ul>
+          <pre><code>provider: openrouter
+model: openai/gpt-5.6-sol
+...
+OPENROUTER_CODEX_OK
+EXIT 0</code></pre>
+        </article>
+        <article class="result-card blocked">
+          <div class="result-head"><h3>Merge Gateway</h3><span>Parser blocked</span></div>
+          <ul>
+            <li>Configuration loaded</li><li>Authentication accepted</li><li>Endpoint reachable</li><li>Model selected correctly</li><li class="bad">Final stream event rejected</li><li class="bad">Codex exited unsuccessfully</li>
+          </ul>
+          <pre><code>provider: merge-gateway
+model: openai/gpt-5.6-sol
+...
+failed to parse ResponseCompleted:
+missing field `input_tokens`
+EXIT 1</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="finding">
+      <div class="section-label">03 / FINDING</div>
+      <h2>The gap is protocol conformance—not routing.</h2>
+      <p>Merge Gateway’s OpenAI-compatible route accepted the request but returned a final streamed event that Codex 0.144.1 could not parse because a required <code>input_tokens</code> value was absent. Its native Responses route also rejected newer Codex request shapes, including <code>additional_tools</code>.</p>
+      <blockquote>“OpenAI-compatible” should be validated with real clients, not only handcrafted HTTP requests.</blockquote>
+      <div class="schema">
+        <div><span>Expected usage shape</span><pre><code>{
+  "usage": {
+    "input_tokens": 123,
+    "output_tokens": 45,
+    "total_tokens": 168
+  }
+}</code></pre></div>
+        <div><span>Why it matters</span><p>Codex treats response events as typed protocol objects. Missing required fields are not cosmetic; they terminate the agent session.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-label">04 / WHAT WORKED ELSEWHERE</div>
+      <h2>Merge works through other paths</h2>
+      <div class="three">
+        <article><b>Native SDK</b><p>Merge’s Python and TypeScript SDKs use its native Responses format and are the strongest route for custom agents.</p></article>
+        <article><b>Claude Code</b><p>Merge’s Anthropic-compatible endpoint completed a live Claude Code test with an Anthropic model.</p></article>
+        <article><b>LangGraph / Deep Agents</b><p>A custom agent can control request formatting and avoid strict Codex client assumptions, subject to tool-call testing.</p></article>
+      </div>
+    </section>
+
+    <section id="repro">
+      <div class="section-label">05 / REPRODUCTION</div>
+      <h2>Minimal provider configuration</h2>
+      <div class="code-tabs">
+        <div><h3>OpenRouter</h3><pre><code>[model_providers.openrouter]
+name = "OpenRouter"
+base_url = "https://openrouter.ai/api/v1"
+env_key = "OPENROUTER_API_KEY"
+wire_api = "responses"</code></pre></div>
+        <div><h3>Merge Gateway</h3><pre><code>[model_providers.merge-gateway]
+name = "Merge Gateway"
+base_url = "https://api-gateway.merge.dev/v1/openai"
+env_key = "MERGE_GATEWAY_API_KEY"
+wire_api = "responses"</code></pre></div>
+      </div>
+      <pre class="command"><code>codex exec --skip-git-repo-check --sandbox read-only \
+  "Reply with exactly: GATEWAY_OK"</code></pre>
+    </section>
+
+    <section class="takeaway">
+      <div class="section-label">06 / RECOMMENDATION</div>
+      <h2>Build a client-level compatibility suite.</h2>
+      <p>Test current and previous Codex versions against plain responses, streaming, developer messages, tool calls, reasoning controls, session continuation, and complete usage accounting. A gateway should only claim Codex compatibility after a real Codex process exits successfully.</p>
+    </section>
+  </main>
+
+  <footer><p>Independent field test conducted on a Linux VPS. Results reflect the tested versions and endpoints on July 12, 2026 and may change as clients and gateways update.</p><a href="https://github.com/MatthewFeroz/codex-gateway-compatibility">View source</a></footer>
+</body>
+</html>
